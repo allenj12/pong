@@ -1,0 +1,177 @@
+(load "SDL.carp")
+(load "Vector.carp")
+(load "./collision.carp")
+(use Double)
+
+
+
+;;anyway to mutate this directly so I can also store the keypress in here? or directly mutate the p1's position?
+(deftype AppState
+    [p1 Box
+     ai Box
+     ball Circle
+     ball-vel V2
+     top-wall Box
+     bot-wall Box])
+
+(def input SDL.Keycode.left)
+
+(defn handle-events
+  [app-state]
+  (let [event (SDL.Event.init)
+        ret true]
+    (do
+      (while (SDL.Event.poll (address event))
+        (let [et (SDL.Event.type &event)]
+          (cond
+            (= et SDL.Event.quit) (set! ret false)
+            (= et SDL.Event.key-down) (let [key (SDL.Event.keycode &event)
+                                            p1 (AppState.p1 app-state)
+                                            p1-x (get-x p1)
+                                            p1-y (get-y p1)]
+                                        (cond
+                                          (or
+                                           (= key SDL.Keycode.up)
+                                           (= key SDL.Keycode.down)) (set! input key)
+                                          (set! input SDL.Keycode.left)))
+            (set! input SDL.Keycode.left))))
+      ret)))
+
+(defn move
+  [app-state]
+  (let [p1 (AppState.p1 &app-state)
+        p1-x (get-x p1)
+        p1-y (get-y p1)]
+    (cond
+      (= input SDL.Keycode.up) (AppState.set-p1 app-state
+                                                (set-center
+                                                 @p1
+                                                 (Vector2.V2.init p1-x (- p1-y 5.0))))
+      (= input SDL.Keycode.down) (AppState.set-p1 app-state
+                                                  (set-center
+                                                   @p1
+                                                   (Vector2.V2.init p1-x (+ p1-y 5.0))))
+      app-state)))
+
+(defn move-bot
+  [app-state]
+  (let [ai (AppState.ai &app-state)
+        ai-x (get-x ai)
+        ball (AppState.ball &app-state)
+        ball-y (get-y ball)]
+    (AppState.set-ai app-state
+                     (set-center
+                      @ai
+                      (Vector2.V2.init ai-x ball-y)))))
+
+(defn move-ball
+  [app-state]
+  (let [ball (AppState.ball &app-state)
+        ball-center (get-center ball)
+        ball-vel (AppState.ball-vel &app-state)]
+    (AppState.set-ball app-state
+                       (set-center
+                        @ball
+                        (Vector2.add
+                         &ball-center
+                         ball-vel)))))
+
+(defn collision-ball-player
+  [app-state]
+  (let [ball (AppState.ball &app-state)
+        ball-vel (AppState.ball-vel &app-state)
+        ball-vel-x (get-x ball-vel)
+        ball-vel-y (get-y ball-vel)
+        p1 (AppState.p1 &app-state)
+        ai (AppState.ai &app-state)
+        collide-p1 (Collision2.aabb-circle-overlap? p1 ball)
+        collide-ai (Collision2.aabb-circle-overlap? ai ball)
+        mtv-with (if collide-p1 p1 ai)]
+    (if (or collide-p1 collide-ai)
+      (let [n-ball
+            (set-center @ball
+                        (add &(get-center ball)
+                             &(Collision2.circle-aabb-mtv ball mtv-with)))]
+        (AppState.set-ball
+         (AppState.set-ball-vel app-state
+                                (Vector2.V2.init (* -1.0 ball-vel-x) ball-vel-y))
+         n-ball))
+      app-state)))
+
+(defn collision-ball-wall
+  [app-state]
+  (let [ball (AppState.ball &app-state)
+        ball-vel (AppState.ball-vel &app-state)
+        ball-vel-x (get-x ball-vel)
+        ball-vel-y (get-y ball-vel)
+        twall (AppState.top-wall &app-state)
+        bwall (AppState.bot-wall &app-state)]
+    (if (or (Collision2.aabb-circle-overlap? twall ball)
+            (Collision2.aabb-circle-overlap? bwall ball))
+      (AppState.set-ball-vel app-state
+                             (Vector2.V2.init ball-vel-x (* -1.0 ball-vel-y)))
+      app-state)))
+
+(defn handle-collisions
+  [app-state]
+  (collision-ball-wall (collision-ball-player app-state)))
+
+(defn draw-box
+  [rend box]
+  (SDL.render-fill-rect rend (address
+                              (SDL.rect
+                               (to-int (x-min box))
+                               (to-int (y-min box))
+                               (to-int (* (get-hwidth box) 2.0))
+                               (to-int (* (get-hheight box) 2.0))))))
+
+;;too lazy to write a render ball function
+(defn draw-circle
+  [rend circle]
+  (SDL.render-fill-rect rend (address
+                              (SDL.rect
+                               (to-int (- (get-x circle) (get-radius circle)))
+                               (to-int (- (get-y circle) (get-radius circle)))
+                               (to-int (* (get-radius circle) 2.0))
+                               (to-int (* (get-radius circle) 2.0))))))
+
+(defn draw
+  [rend app-state]
+  (do
+    (SDL.set-render-draw-color rend 0 0 0 0)
+    (SDL.render-clear rend)
+    (SDL.set-render-draw-color rend 200 50 100 100)
+    (draw-box rend (AppState.p1 app-state))
+    (draw-box rend (AppState.ai app-state))
+    (draw-box rend (AppState.top-wall app-state))
+    (draw-box rend (AppState.bot-wall app-state))
+    (draw-circle rend (AppState.ball app-state))
+    (SDL.render-present rend)))
+
+(defn create-app
+  []
+  (AppState.init
+   (AABB2.init (Vector2.V2.init 1150.0 400.0) 20.0 50.0)
+   (AABB2.init (Vector2.V2.init 50.0 400.0) 20.0 50.0)
+   (Circle2.init (Vector2.V2.init 600.0 400.0) 33.0)
+   (Vector2.V2.init -5.0 (random-between -5.0 5.0))
+   (AABB2.init (Vector2.V2.init 600.0 780.0) 1200.0 10.0)
+   (AABB2.init (Vector2.V2.init 600.0 20.0) 1200.0 10.0)))
+
+(defn main
+  []
+  (let [app-state (create-app)
+        app (SDLApp.create "PONG" 1200 800)
+        rend @(SDLApp.renderer &app)]
+    (do
+      (while (handle-events &app-state)
+        (do
+          ;;change this to pipe command
+          (set! app-state (move app-state))
+          (set! app-state (move-bot app-state))
+          (set! app-state (move-ball app-state))
+          (set! app-state (handle-collisions app-state))
+          (draw rend &app-state)
+          (SDL.delay 1)))
+      (SDLApp.stop &app)
+      0)))

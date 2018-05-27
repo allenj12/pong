@@ -1,0 +1,264 @@
+(use Double)
+;;(use IO)
+(load "Vector.carp")
+(use Vector2)
+(use Array)
+
+(defmodule AABB2
+  
+  (deftype Box
+      [center V2
+       hwidth Double
+       hheight Double])
+
+  (defn get-center
+    [b]
+    @(Box.center b))
+
+  (defn get-hwidth
+    [b]
+    @(Box.hwidth b))
+
+  (defn get-hheight
+    [b]
+    @(Box.hheight b))
+
+  (defn set-center
+    [b v]
+    (Box.set-center b v))
+
+  (defn set-hwidth
+    [b v]
+    (Box.set-hwidth b v))
+  
+  (defn set-hheight
+    [b v]
+    (Box.set-hheight b v))
+
+  (defn get-x
+    [b]
+    (Vector2.get-x (Box.center b)))
+
+  (defn get-y
+    [b]
+    (Vector2.get-y (Box.center b)))
+
+  (defn x-min
+    [b]
+    (- (get-x (Box.center b)) @(Box.hwidth b)))
+
+  (defn y-min
+    [b]
+    (- (get-y (Box.center b)) @(Box.hheight b)))
+
+  (defn x-max
+    [b]
+    (+ (get-x (Box.center b)) @(Box.hwidth b)))
+
+  (defn y-max
+    [b]
+    (+ (get-y (Box.center b)) @(Box.hheight b)))
+
+  (defn to-string
+    [b]
+    (string-join @"(Box "
+                 (V2.str (Box.center b)) @", "
+                 (str @(Box.hwidth b)) @", "
+                 (str @(Box.hheight b)) @")"))
+
+  (defn init
+    [center hwidth hheight]
+    (Box.init center hwidth hheight))
+
+  (defn unit
+    []
+    (Box.init (V2.init 0.0 0.0) 0.5 0.5))
+
+  (defn area
+    [b]
+    (* (* @(Box.hwidth b) 2.0) (* @(Box.hheight b) 2.0)))
+
+  (defn corners
+    [b]
+    (let [center (Box.center b)
+          hwidth @(Box.hwidth b)
+          hheight @(Box.hheight b)
+          tl (V2.init (- (get-x center) hwidth) (+ (get-y center) hheight))
+          tr (V2.init (+ (get-x center) hwidth) (+ (get-y center) hheight))
+          bl (V2.init (- (get-x center) hwidth) (- (get-y center) hheight))
+          br (V2.init (+ (get-x center) hwidth) (- (get-y center) hheight))]
+      [tl tr bl br]))
+
+  (defn point-in-aabb?
+    [v b]
+    (and*
+     (<= (get-x &v) (x-max b))
+     (>= (get-x &v) (x-min b))
+     (<= (get-y &v) (y-max b))
+     (>= (get-y &v) (y-min b))))
+  )
+
+(defmodule Circle2
+
+  (deftype Circle
+      [center V2
+       radius Double])
+
+  (defn get-center
+    [c]
+    @(Circle.center c))
+  
+  (defn get-radius
+    [c]
+    @(Circle.radius c))
+
+  (defn set-center
+    [c v]
+    (Circle.set-center c v))
+  
+  (defn set-radius
+    [c v]
+    (Circle.set-radius c v))
+
+  (defn get-x
+    [c]
+    (Vector2.get-x (Circle.center c)))
+
+  (defn get-y
+    [c]
+    (Vector2.get-y (Circle.center c)))
+
+  (defn poles
+    [c]
+    (let [n (V2.init (get-x c) (+ (get-y c) (get-radius c)))
+          s (V2.init (get-x c) (- (get-y c) (get-radius c)))
+          e (V2.init (+ (get-x c) (get-radius c)) (get-y c))
+          w (V2.init (- (get-x c) (get-radius c)) (get-y c))]
+      [n s e w]))
+
+  (defn init
+    [center radius]
+    (Circle.init center radius))
+
+  (defn unit
+    []
+    (Circle.init (V2.init 0.0 0.0) 0.5))
+
+  (defn to-string
+    [c]
+    (string-join @"(Circle "
+                 (V2.str (Circle.center c)) @", "
+                 (str @(Circle.radius c)) @")"))
+
+  (defn area
+    [c]
+    (* pi (pow @(Circle.radius c) 2.0)))
+
+  (defn point-in-circle?
+    [v c]
+    (<= (mag &(sub v &(get-center c))) (get-radius c)))
+  )
+
+(use AABB2)
+(use Circle2)
+
+(defmodule Collision2
+
+  ;;FIXME: some methods return collison when perfectly touching and some do not
+  ;;NOTE: Double check all MTV are for pushing the first object
+  
+  (defn aabb-aabb-overlap?
+    [b1 b2]
+    (let [combined-hwidth (+ @(Box.hwidth b1) @(Box.hwidth b2))
+          combined-hheight (+ @(Box.hheight b1) @(Box.hheight b2))]
+      (and* (< (get-x b1) (+ (get-x b2)
+                             combined-hwidth))
+            (< (get-x b2) (+ (get-x b1)
+                             combined-hwidth))
+            (< (get-y b1) (+ (get-y b2)
+                             combined-hheight))
+            (< (get-y b2) (+ (get-y b1)
+                             combined-hheight)))))
+
+  (defn aabb-aabb-mtv
+    [b1 b2]
+    (let [x-dist (if (< (get-x b1) (get-x b2))
+                   (* -1.0 (abs (- (x-max b1) (x-min b2))))
+                   (abs (- (x-max b2) (x-min b1))))
+          y-dist (if (< (get-y b1) (get-y b2))
+                   (* -1.0 (abs (- (y-max b1) (y-min b2))))
+                   (abs (- (y-max b2) (y-min b1))))]
+      (if (< (abs x-dist) (abs y-dist))
+        (Vector2.V2.init x-dist 0.0)
+        (Vector2.V2.init 0.0 y-dist))))
+
+  (defn circle-circle-overlap?
+    [c1 c2]
+    (let [dist (mag &(sub &(get-center c1) &(get-center c2)))]
+      (< dist (+ (get-radius c1) (get-radius c2)))))
+
+  (defn circle-circle-mtv
+    [c1 c2]
+    (let [v &(sub &(get-center c1) &(get-center c2))
+          m (abs (- (mag v) (+ (get-radius c1) (get-radius c2))))]
+      (mul &(normalize v) m)))
+  
+  (defn aabb-circle-overlap?
+    [b c]
+    (let [dist-x (abs (- (get-x c) (get-x b)))
+          dist-y (abs (- (get-y c) (get-y b)))]
+      (cond
+        (> dist-x (+ (get-hwidth b) (get-radius c))) false
+        (> dist-y (+ (get-hheight b) (get-radius c))) false
+        (<= dist-x (get-hwidth b)) true
+        (<= dist-y (get-hheight b)) true
+        (let [corner-dist-sq (+
+                              (- dist-x (pow (get-hwidth b) 2.0))
+                              (- dist-y (pow (get-hheight b) 2.0)))]
+          (<= corner-dist-sq (pow (get-radius c) 2.0))))))
+
+  (defn circle-aabb-overlap?
+    [c b]
+    (aabb-circle-overlap? b c))
+  
+  (defn aabb-circle-mtv
+    [b c]
+    (let [x-dist (if (< (get-x b) (get-x c))
+                   (* -1.0 (abs (- (x-max b) (- (get-x c) (get-radius c)))))
+                   (abs (- (+ (get-x c) (get-radius c)) (x-min b))))
+          y-dist (if (< (get-y b) (get-y c))
+                   (* -1.0 (abs (- (y-max b) (- (get-y c) (get-radius c)))))
+                   (abs (- (+ (get-y c) (get-radius c)) (y-min b))))]
+      (if (< (abs x-dist) (abs y-dist))
+        (Vector2.V2.init x-dist 0.0)
+        (Vector2.V2.init 0.0 y-dist))))
+
+  (defn circle-aabb-mtv
+    [c b]
+    (mul &(aabb-circle-mtv b c) -1.0))
+
+  (defn circle-in-aabb?
+    [c b]
+    (let [p (poles c)
+          result true]
+      (do
+        (for [i 0 (length &p)]
+          (when (not (point-in-aabb? @(nth &p i) b))
+            (do
+              (set! result false)
+              (break))))
+        result)))
+
+  (defn aabb-in-circle?
+    [b c]
+    (let [p (corners b)
+          result true]
+      (do
+        (for [i 0 (length &p)]
+          (when (not (point-in-circle? (nth &p i) c))
+            (do
+              (set! result false)
+              (break))))
+        result)))
+  
+  )
