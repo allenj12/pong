@@ -3,16 +3,14 @@
 (load "./collision.carp")
 (use Double)
 
-
-
-;;anyway to mutate this directly so I can also store the keypress in here? or directly mutate the p1's position?
 (deftype AppState
     [p1 Box
      ai Box
      ball Circle
      ball-vel V2
      top-wall Box
-     bot-wall Box])
+     bot-wall Box
+     bounds Box])
 
 (def input SDL.Keycode.left)
 
@@ -41,16 +39,24 @@
   [app-state]
   (let [p1 (AppState.p1 &app-state)
         p1-x (get-x p1)
-        p1-y (get-y p1)]
+        p1-y (get-y p1)
+        upper-bound 160.0
+        lower-bound 640.0]
     (cond
       (= input SDL.Keycode.up) (AppState.set-p1 app-state
                                                 (set-center
                                                  @p1
-                                                 (Vector2.V2.init p1-x (- p1-y 5.0))))
+                                                 (Vector2.V2.init p1-x
+                                                                  (if (< (- p1-y 5.0) upper-bound)
+                                                                    upper-bound
+                                                                    (- p1-y 5.0)))))
       (= input SDL.Keycode.down) (AppState.set-p1 app-state
                                                   (set-center
                                                    @p1
-                                                   (Vector2.V2.init p1-x (+ p1-y 5.0))))
+                                                   (Vector2.V2.init p1-x
+                                                                    (if (> (+ p1-y 5.0) lower-bound)
+                                                                    lower-bound
+                                                                    (+ p1-y 5.0)))))
       app-state)))
 
 (defn move-bot
@@ -62,7 +68,7 @@
     (AppState.set-ai app-state
                      (set-center
                       @ai
-                      (Vector2.V2.init ai-x ball-y)))))
+                      (Vector2.V2.init ai-x ball-y))))))
 
 (defn move-ball
   [app-state]
@@ -88,13 +94,17 @@
         collide-ai (Collision2.aabb-circle-overlap? ai ball)
         mtv-with (if collide-p1 p1 ai)]
     (if (or collide-p1 collide-ai)
-      (let [n-ball
+      (let [n-ball-mag (* 1.05 (mag ball-vel))
+            n-ball-dir (normalize
+                        &(sub &(get-center ball)
+                              &(get-center mtv-with)))
+            n-ball
             (set-center @ball
                         (add &(get-center ball)
                              &(Collision2.circle-aabb-mtv ball mtv-with)))]
         (AppState.set-ball
          (AppState.set-ball-vel app-state
-                                (Vector2.V2.init (* -1.0 ball-vel-x) ball-vel-y))
+                                (mul &n-ball-dir n-ball-mag))
          n-ball))
       app-state)))
 
@@ -111,10 +121,6 @@
       (AppState.set-ball-vel app-state
                              (Vector2.V2.init ball-vel-x (* -1.0 ball-vel-y)))
       app-state)))
-
-(defn handle-collisions
-  [app-state]
-  (collision-ball-wall (collision-ball-player app-state)))
 
 (defn draw-box
   [rend box]
@@ -155,8 +161,23 @@
    (AABB2.init (Vector2.V2.init 50.0 400.0) 20.0 50.0)
    (Circle2.init (Vector2.V2.init 600.0 400.0) 33.0)
    (Vector2.V2.init -5.0 (random-between -5.0 5.0))
-   (AABB2.init (Vector2.V2.init 600.0 780.0) 1200.0 10.0)
-   (AABB2.init (Vector2.V2.init 600.0 20.0) 1200.0 10.0)))
+   (AABB2.init (Vector2.V2.init 600.0 790.0) 1200.0 10.0)
+   (AABB2.init (Vector2.V2.init 600.0 10.0) 1200.0 10.0)
+   (AABB2.init (Vector2.V2.init 600.0 400.0) 1200.0 800.0)))
+
+(defn oob-reset
+  [app-state]
+  (let [ball (AppState.ball &app-state)
+        bounds (AppState.bounds &app-state)]
+    (if (Collision2.circle-in-aabb? ball bounds)
+      app-state
+      (create-app))))
+
+(defn handle-collisions
+  [app-state]
+  (oob-reset
+   (collision-ball-wall
+    (collision-ball-player app-state))))
 
 (defn main
   []
