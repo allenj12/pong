@@ -23,10 +23,7 @@
         (let [et (SDL.Event.type &event)]
           (cond
             (= et SDL.Event.quit) (set! ret false)
-            (= et SDL.Event.key-down) (let [key (SDL.Event.keycode &event)
-                                            p1 (AppState.p1 app-state)
-                                            p1-x (get-x p1)
-                                            p1-y (get-y p1)]
+            (= et SDL.Event.key-down) (let [key (SDL.Event.keycode &event)]
                                         (cond
                                           (or
                                            (= key SDL.Keycode.up)
@@ -68,7 +65,7 @@
     (AppState.set-ai app-state
                      (set-center
                       @ai
-                      (Vector2.V2.init ai-x ball-y))))))
+                      (Vector2.V2.init ai-x ball-y)))))
 
 (defn move-ball
   [app-state]
