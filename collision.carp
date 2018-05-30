@@ -1,5 +1,4 @@
 (use Double)
-;;(use IO)
 (load "Vector.carp")
 (use Vector2)
 (use Array)
@@ -205,17 +204,23 @@
   
   (defn aabb-circle-overlap?
     [b c]
-    (let [dist-x (abs (- (get-x c) (get-x b)))
-          dist-y (abs (- (get-y c) (get-y b)))]
+    (let [diff-x (- (get-x c) (get-x b))
+          diff-y (- (get-y c) (get-y b))
+          right (if (> diff-x 0.0) 1.0 -1.0)
+          above (if (> diff-y 0.0) 1.0 -1.0)
+          dist-x (abs diff-x)
+          dist-y (abs diff-y)]
       (cond
         (> dist-x (+ (get-hwidth b) (get-radius c))) false
         (> dist-y (+ (get-hheight b) (get-radius c))) false
         (<= dist-x (get-hwidth b)) true
         (<= dist-y (get-hheight b)) true
-        (let [corner-dist-sq (+
-                              (- dist-x (pow (get-hwidth b) 2.0))
-                              (- dist-y (pow (get-hheight b) 2.0)))]
-          (<= corner-dist-sq (pow (get-radius c) 2.0))))))
+        (point-in-circle?
+         &(add
+           &(get-center b)
+           &(Vector2.V2.init (* (get-hwidth b) right)
+                             (* (get-hheight b) above)))
+         c))))
 
   (defn circle-aabb-overlap?
     [c b]
@@ -262,3 +267,4 @@
         result)))
   
   )
+

@@ -2,6 +2,7 @@
 (load "Vector.carp")
 (load "./collision.carp")
 (use Double)
+(use Int)
 
 (deftype AppState
     [p1 Box
@@ -128,15 +129,35 @@
                                (to-int (* (get-hwidth box) 2.0))
                                (to-int (* (get-hheight box) 2.0))))))
 
-;;too lazy to write a render ball function
 (defn draw-circle
   [rend circle]
-  (SDL.render-fill-rect rend (address
-                              (SDL.rect
-                               (to-int (- (get-x circle) (get-radius circle)))
-                               (to-int (- (get-y circle) (get-radius circle)))
-                               (to-int (* (get-radius circle) 2.0))
-                               (to-int (* (get-radius circle) 2.0))))))
+  (let [cx (to-int (get-x circle))
+        cy (to-int (get-y circle))
+        radius (to-int (get-radius circle))
+        x (- radius 1)
+        y 0
+        dx 1
+        dy 1
+        err (- dx (bit-shift-left radius 1))]
+    (while (>= x y)
+      (do
+        (SDL.render-draw-point rend (+ cx x) (+ cy y))
+        (SDL.render-draw-point rend (+ cx y) (+ cy x))
+        (SDL.render-draw-point rend (- cx y) (+ cy x))
+        (SDL.render-draw-point rend (- cx x) (+ cy y))
+        (SDL.render-draw-point rend (- cx x) (- cy y))
+        (SDL.render-draw-point rend (- cx y) (- cy x))
+        (SDL.render-draw-point rend (+ cx y) (- cy x))
+        (SDL.render-draw-point rend (+ cx x) (- cy y))
+        (if (<= err 0)
+          (do
+            (set! y (inc y))
+            (set! err (+ err dy))
+            (set! dy (+ dy 2)))
+          (do
+            (set! x (dec x))
+            (set! dx (+ dx 2))
+            (set! err (- (+ err dx ) (bit-shift-left radius 1)))))))))
 
 (defn draw
   [rend app-state]
@@ -184,11 +205,12 @@
     (do
       (while (handle-events &app-state)
         (do
-          ;;change this to pipe command
-          (set! app-state (move app-state))
-          (set! app-state (move-bot app-state))
-          (set! app-state (move-ball app-state))
-          (set! app-state (handle-collisions app-state))
+          (set! app-state
+                (=> app-state
+                    (move)
+                    (move-bot)
+                    (move-ball)
+                    (handle-collisions)))
           (draw rend &app-state)
           (SDL.delay 1)))
       (SDLApp.stop &app)
